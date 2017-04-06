@@ -1,0 +1,941 @@
+% A simple functional language extended with records and subtyping.
+% Computation and Deduction (2017), Anders Kiel Hovgaard.
+
+% --- Natural numbers
+
+nat : type. %name nat N.
+
+0 : nat.
+s : nat -> nat.
+
+% Disequality
+nat-neq : nat -> nat -> type.
+
+nat-neq/s0 : nat-neq (s N) 0.
+nat-neq/0s : nat-neq 0 (s N).
+nat-neq/ss : nat-neq (s N1) (s N2)
+              <- nat-neq N1 N2.
+
+% --- Labels
+
+label : type. %name label L.
+
+label/nat : nat -> label.
+
+label-eq  : label -> label -> type.
+label-eq/ : label-eq (label/nat N) (label/nat N).
+
+label-neq  : label -> label -> type.
+label-neq/ : label-neq (label/nat N) (label/nat N')
+              <- nat-neq N N'.
+
+l0 = label/nat 0.
+l1 = label/nat (s 0).
+l2 = label/nat (s (s 0)).
+l3 = label/nat (s (s (s 0))).
+
+
+% --- Types
+
+tp : type. %name tp T.
+tp-rcd : type. %name tp-rcd TR.
+
+tnat   : tp.
+tarrow : tp -> tp -> tp.
+trcd   : tp-rcd -> tp.
+
+trnil  : tp-rcd.
+trcons : label -> tp -> tp-rcd -> tp-rcd.
+
+
+% --- Syntax
+
+exp : type. %name exp E.
+rcd : type. %name rcd R.
+
+num  : nat -> exp.
+lam  : tp -> (exp -> exp) -> exp.
+app  : exp -> exp -> exp.
+fix  : tp -> (exp -> exp) -> exp.
+
+% Records
+rcde : rcd -> exp. % "record expression"
+rsel : exp -> label -> exp.
+
+rnil  : rcd.
+rcons : label -> exp -> rcd -> rcd.
+
+% Derived forms
+pair : exp -> exp -> exp
+  = [e1] [e2] rcde (rcons l0 e1 (rcons l1 e2 rnil)).
+
+fst : exp -> exp
+  = [e] rsel e l0.
+
+snd : exp -> exp
+  = [e] rsel e l1.
+
+
+% Examples of abstract syntax involving records (used in later queries).
+example-rcd : rcd = rcons l0 (num 0)
+                     (rcons l1 (lam tnat [x] x)
+                        rnil).
+example-rsel : exp = rsel (rcde example-rcd) l1.
+
+
+% --- Notion of value
+
+value : exp -> type. %name value VP.
+value-rcd : rcd -> type. %name value-rcd VPR.
+
+value/num  : value (num N).
+
+value/lam  : value (lam T [x] E x).
+
+value/rcde : value (rcde R)
+              <- value-rcd R.
+
+value-rcd/rnil  : value-rcd rnil.
+
+value-rcd/rcons : value-rcd (rcons L V R)
+                   <- value V
+                   <- value-rcd R.
+
+%query 1 * D : value (rcde example-rcd).
+
+% Not a value because the component is beta-reducible.
+%query 0 * D : value (rcde (rcons (label/nat 0)
+                              (app (lam tnat [x] x) (num 0)) rnil)).
+
+%query 0 * D : value (rsel (rcde (rcons (label/nat 0)
+                                    (num 0) rnil)) (label/nat 0)).
+
+
+% --- Judgments about labels and records
+
+% Judgment that a label does not occur in a record type.
+label-absent-tp : label -> tp-rcd -> type.
+
+label-absent-tp/rnil  : label-absent-tp L trnil.
+
+label-absent-tp/rcons : label-absent-tp L (trcons L' T TR)
+                         <- label-neq L L'
+                         <- label-absent-tp L TR.
+
+% Uniqueness of labels
+uniq : tp-rcd -> type. %name uniq Uniq.
+
+uniq/rnil  : uniq trnil.
+
+uniq/rcons : uniq (trcons L T TR)
+              <- label-absent-tp L TR
+              <- uniq TR.
+
+% Well-formedness of types: all occurring record type have distinct labels.
+wellf-tp : tp -> type.
+wellf-tp-rcd : tp-rcd -> type.
+
+wellf-tnat   : wellf-tp tnat.
+
+wellf-tarrow : wellf-tp (tarrow T T')
+                  <- wellf-tp T
+                  <- wellf-tp T'.
+
+wellf-trcd   : wellf-tp (trcd TR)
+                  <- wellf-tp-rcd TR.
+
+wellf-trnil  : wellf-tp-rcd trnil.
+
+wellf-trcons : wellf-tp-rcd (trcons L T TR)
+                      <- wellf-tp T
+                      <- label-absent-tp L TR
+                      <- wellf-tp-rcd TR.
+
+% Extracts the type at a given label from a record type.
+extract-tp : label -> tp-rcd -> tp -> type.
+
+extract-tp/eq  : extract-tp L (trcons L' T TR) T
+                  <- label-eq L L'.
+
+extract-tp/neq : extract-tp L (trcons L' T' TR) T
+                  <- label-neq L L' % TODO: maybe not needed
+                  <- extract-tp L TR T.
+
+% A simple example.
+example-rcd-tp = trcons l0 tnat
+                  (trcons l1 (tarrow tnat tnat)
+                     trnil).
+%query 1 * D : wellf-tp (trcd example-rcd-tp).
+%query 1 * D : extract-tp l1 example-rcd-tp (tarrow tnat tnat).
+%query 0 * D : extract-tp l2 example-rcd-tp T.
+
+
+% Extracts the component with a given label in a record.
+extract : label -> rcd -> exp -> type.
+
+extract/eq  : extract L (rcons L' E R) E
+               <- label-eq L L'.
+
+extract/neq : extract L (rcons L' E R) E'
+               <- label-neq L L'
+               <- extract L R E'.
+
+%query 1 * D : extract l0 example-rcd E.
+%query 0 * D : extract l2 example-rcd E.
+
+
+% --- Subtyping
+
+% Subtyping relation
+sub : tp -> tp -> type. %name sub ST.
+sub-rcd : tp-rcd -> tp-rcd -> type.
+
+sub/nat   : sub tnat tnat.
+
+sub/arrow : sub (tarrow T1' T2') (tarrow T1 T2)
+             <- sub T1 T1'
+             <- sub T2' T2.
+
+sub/rcd   : sub (trcd TR1) (trcd TR2)
+             <- sub-rcd TR1 TR2.
+
+sub-rcd/rnil  : sub-rcd TR trnil.
+
+sub-rcd/rcons : sub-rcd (trcons L T' TR') (trcons L T TR)
+                 <- sub T' T
+                 <- sub-rcd TR' TR.
+
+
+% Lemma: The algorithmic subtype relation is reflexive.
+sub-refl : {T} sub T T -> type.
+%mode sub-refl +T -ST.
+
+sub-rcd-refl : {TR} sub-rcd TR TR -> type.
+%mode sub-rcd-refl +TR -SRT.
+
+- : sub-refl tnat sub/nat.
+
+- : sub-refl (tarrow T1 T2) (sub/arrow ST2 ST1)
+     <- sub-refl T1 ST1
+     <- sub-refl T2 ST2.
+
+- : sub-refl (trcd TR) (sub/rcd SRT)
+     <- sub-rcd-refl TR SRT.
+
+- : sub-rcd-refl trnil sub-rcd/rnil.
+
+- : sub-rcd-refl (trcons L T TR) (sub-rcd/rcons SRT ST)
+     <- sub-refl T ST
+     <- sub-rcd-refl TR SRT.
+
+%worlds () (sub-refl _ _) (sub-rcd-refl _ _).
+%total (T TR) (sub-refl T _) (sub-rcd-refl TR _).
+
+
+%% Transitivity
+% Wiki entry on mutual induction
+
+sub-trans : sub T1 T2 -> sub T2 T3 -> sub T1 T3 -> type.
+%mode sub-trans +ST1 +ST2 -ST3.
+
+sub-trans' : sub T1 T2 -> sub T2 T3 -> sub T1 T3 -> type.
+%mode sub-trans' +ST1 +ST2 -ST3.
+
+sub-rcd-trans : sub-rcd T1 T2 -> sub-rcd T2 T3 -> sub-rcd T1 T3 -> type.
+%mode sub-rcd-trans +ST1 +ST2 -ST3.
+
+sub-rcd-trans' : sub-rcd T1 T2 -> sub-rcd T2 T3 -> sub-rcd T1 T3 -> type.
+%mode sub-rcd-trans' +ST1 +ST2 -ST3.
+
+% Induction on first derivation
+% - : sub-trans (ST : sub T T) (ST' : sub T T) ST.
+- : sub-trans sub/nat sub/nat sub/nat.
+
+- : sub-trans (sub/arrow ST1b ST1a) (sub/arrow ST2b ST2a) (sub/arrow ST2 ST1)
+     <- sub-trans' ST2a ST1a ST1
+     <- sub-trans ST1b ST2b ST2.
+
+- : sub-trans (sub/rcd SRT1) (sub/rcd SRT2) (sub/rcd SRT)
+     <- sub-rcd-trans SRT1 SRT2 SRT.
+
+% Induction on second derivation
+% - : sub-trans (ST : sub T T) (ST' : sub T T) ST.
+- : sub-trans' sub/nat sub/nat sub/nat.
+
+- : sub-trans' (sub/arrow ST1b ST1a) (sub/arrow ST2b ST2a) (sub/arrow ST2 ST1)
+     <- sub-trans ST2a ST1a ST1
+     <- sub-trans' ST1b ST2b ST2.
+
+- : sub-trans' (sub/rcd SRT1) (sub/rcd SRT2) (sub/rcd SRT)
+     <- sub-rcd-trans' SRT1 SRT2 SRT.
+
+% Record subtype
+
+- : sub-rcd-trans sub-rcd/rnil sub-rcd/rnil sub-rcd/rnil.
+
+- : sub-rcd-trans (sub-rcd/rcons SRT1 ST1) sub-rcd/rnil sub-rcd/rnil.
+
+- : sub-rcd-trans (sub-rcd/rcons SRT1 ST1) (sub-rcd/rcons SRT2 ST2)
+                  (sub-rcd/rcons SRT ST)
+     <- sub-trans ST1 ST2 ST
+     <- sub-rcd-trans SRT1 SRT2 SRT.
+
+% Record subtype (second derivation)
+
+- : sub-rcd-trans' sub-rcd/rnil sub-rcd/rnil sub-rcd/rnil.
+
+- : sub-rcd-trans' (sub-rcd/rcons SRT1 ST1) sub-rcd/rnil sub-rcd/rnil.
+
+- : sub-rcd-trans' (sub-rcd/rcons SRT1 ST1) (sub-rcd/rcons SRT2 ST2)
+                   (sub-rcd/rcons SRT ST)
+     <- sub-trans' ST1 ST2 ST
+     <- sub-rcd-trans' SRT1 SRT2 SRT.
+
+%worlds () (sub-trans _ _ _) (sub-trans' _ _ _)
+           (sub-rcd-trans _ _ _) (sub-rcd-trans' _ _ _).
+%total (ST1 ST2 SRT1 SRT2) (sub-trans ST1 _ _) (sub-trans' _ ST2 _)
+                           (sub-rcd-trans SRT1 _ _) (sub-rcd-trans' _ SRT2 _).
+
+% Simple example of record width subtype:
+% {0 : nat, 1 : nat, 2 : nat} <: {0 : nat, 1 : nat}
+%query 1 * D : sub (trcd (trcons l0 tnat
+                              (trcons l1 tnat
+                                 (trcons l2 tnat
+                                    (trcons l3 tnat trnil)))))
+                   (trcd (trcons l0 tnat
+                              (trcons l1 tnat trnil))).
+
+% {0 : nat, 1 : nat} is not a subtype of {0 : nat, 1 : nat, 2 : nat}
+%query 0 * D : sub-rcd (trcons l0 tnat
+                          (trcons l1 tnat trnil))
+                       (trcons l0 tnat
+                          (trcons l1 tnat
+                             (trcons l2 tnat trnil))).
+
+
+% Width and depth:
+% {0 : {0:nat, 1:nat}, 1 : {0:nat}} <: {0 : {0:nat} 1 : {0:nat}}
+
+ex-rcd' = trcd (trcons l0
+                    (trcd (trcons l0 tnat
+                               (trcons l1 tnat trnil)))
+                    (trcons l1
+                       (trcd (trcons l0 tnat trnil))
+                       trnil)).
+
+ex-rcd = trcd (trcons l0
+                   (trcd (trcons l0 tnat trnil))
+                   (trcons l1
+                      (trcd (trcons l0 tnat trnil))
+                      trnil)).
+
+%query 1 * D : sub ex-rcd' ex-rcd.
+
+
+% --- Typing judgment
+
+of : exp -> tp -> type. %name of OP.
+of-rcd : rcd -> tp-rcd -> type. %name of-rcd ORP.
+
+of/num  : of (num N) tnat.
+
+of/lam  : of (lam T [x] E x) (tarrow T T')
+           <- wellf-tp T
+           <- {x:exp} of x T -> of (E x) T'.
+
+% Subtyping application rule
+of/app  : of (app E1 E2) T'
+           <- of E1 (tarrow T T')
+           <- of E2 T2
+           <- sub T2 T.
+
+% of/fix  : of (fix [x] E x) T
+%            <- {x:exp} of x T -> of (E x) T.
+
+of/fix  : of (fix T [x] E x) T'
+           <- wellf-tp T
+           <- ({x:exp} of x T -> of (E x) T')
+           <- sub T' T.
+
+% Records
+of/rcde : of (rcde R) (trcd TR)
+           <- of-rcd R TR
+           <- uniq TR.
+
+of/rsel : of (rsel E L) T
+           <- of E (trcd TR)
+           <- extract-tp L TR T.
+
+of-rcd/rnil  : of-rcd rnil trnil.
+
+of-rcd/rcons : of-rcd (rcons L E R) (trcons L T TR)
+                <- of E T
+                <- of-rcd R TR.
+
+%query 1 * D : of (rcde example-rcd) T.
+%query 1 * D : of example-rsel T.
+
+
+%% Subtyping example
+
+% (lam x:{l0:nat}. x.l0) {l0=1, l1=0}
+
+ex-tp = trcd (trcons l0 tnat trnil).
+%query 1 * D : of (app (lam ex-tp [x] rsel x l0)
+                     (rcde (rcons l0 (num (s 0))
+                              (rcons l1 (num 0) rnil)))) T.
+
+% ill-formed record with duplicate labels.
+example-rcd-bad : rcd = rcons l0 (num 0)
+                         (rcons l1 (lam tnat [x] x)
+                            (rcons l1 (num 0)
+                               rnil)).
+%query 0 * D : of (rcde example-rcd-bad) T.
+
+% example: ((lam x:t.x) {l0 = s 0, l1 = 0}).l0
+ex-tp0 : tp = trcd (trcons l0 tnat
+                     (trcons l1 tnat trnil)).
+
+example-rsel-app : exp
+  = rsel (app (lam ex-tp0 [x] x)
+            (rcde (rcons l0 (num (s 0))
+                     (rcons l1 (num 0) rnil))))
+         (label/nat 0).
+
+%query 1 * D : of example-rsel-app T.
+
+
+%% Lemma: Given a record typing derivation and a record type extraction,
+%%        we can construct a corresponding record component extraction.
+
+extract-tp2exp : of-rcd R TR
+                  -> extract-tp L TR T -> extract L R E -> type.
+%mode extract-tp2exp +OPR +ExtTp -Ext.
+
+- : extract-tp2exp (of-rcd/rcons ORP OP) (extract-tp/eq Q)
+                   (extract/eq Q).
+
+- : extract-tp2exp (of-rcd/rcons ORP OP) (extract-tp/neq ExtTp NQ)
+                   (extract/neq Ext NQ)
+     <- extract-tp2exp ORP ExtTp Ext.
+
+%worlds () (extract-tp2exp _ _ _).
+%total (ExtTp) (extract-tp2exp _ ExtTp _).
+
+% From expression component extraction to type extraction.
+extract-exp2tp : of-rcd R TR
+                  -> extract L R E -> extract-tp L TR T -> type.
+%mode extract-exp2tp +OPR +Ext -ExtTp.
+
+- : extract-exp2tp (of-rcd/rcons ORP OP) (extract/eq Q) (extract-tp/eq Q).
+
+- : extract-exp2tp (of-rcd/rcons ORP OP) (extract/neq Ext NQ) (extract-tp/neq ExtTp NQ)
+     <- extract-exp2tp ORP Ext ExtTp.
+
+%worlds () (extract-exp2tp _ _ _).
+%total (Ext) (extract-exp2tp _ Ext _).
+
+
+% --- Semantics
+
+% Small-step semantics
+
+step : exp -> exp -> type. %name step SP.
+step-rcd : rcd -> rcd -> type. %name step SRP.
+
+step/app1  : step (app E1 E2) (app E1' E2)
+              <- step E1 E1'.
+
+step/app2  : step (app V1 E2) (app V1 E2')
+              <- value V1
+              <- step E2 E2'.
+
+step/app   : step (app (lam T [x] E0 x) V2) (E0 V2)
+              <- value V2.
+
+step/fix   : step (fix T [x] E x) (E (fix T [x] E x)).
+
+step/rcde  : step (rcde R) (rcde R')
+              <- step-rcd R R'.
+
+step/rsel1 : step (rsel E L) (rsel E' L)
+              <- step E E'.
+
+step/rsel  : step (rsel (rcde V) L) V'
+              <- value-rcd V
+              <- extract L V V'.
+
+step-rcd/rcons1 : step-rcd (rcons L E R) (rcons L E' R)
+                   <- step E E'.
+
+step-rcd/rcons  : step-rcd (rcons L V R) (rcons L V R')
+                   <- value V
+                   <- step-rcd R R'.
+
+% Example expression which is not a value.
+example-rcd' = rcde (rcons (label/nat 0) (app (lam tnat [x] x) (num 0))
+                       (rcons (label/nat (s 0)) (app (lam tnat [x] x) (num 0))
+                          rnil)).
+%query 1 * D : step example-rcd' E'.
+
+
+% Iterated step relation
+steps : exp -> exp -> type. %name steps SS.
+
+steps/0 : steps E E.
+
+steps/m : steps E E'
+           <- step E E''
+           <- steps E'' E'.
+
+% Small-step evaluation
+stepsto : exp -> exp -> type.
+
+stepsto/ : stepsto E V
+            <- steps E V
+            <- value V.
+
+%query 1 * D : stepsto example-rcd' E'.
+
+
+
+% --- Metatheorem: Progress
+
+% An expression is "good" if it's a value of it can step.
+good : exp -> type. %name good GP.
+
+good/v : good V
+          <- value V.
+
+good/s : good E
+          <- step E E'.
+
+% Equivalent notion for records.
+good-rcd : rcd -> type.
+
+good-rcd/v : good-rcd V
+              <- value-rcd V.
+
+good-rcd/s : good-rcd R
+              <- step-rcd R R'.
+
+% Progress lemma for application (output factoring).
+pgood-app : of E1 (tarrow T T')
+                -> good E1 -> good E2 -> good (app E1 E2) -> type.
+%mode pgood-app +OP1 +GP1 +GP2 -GP3.
+
+% We analyze each case where E1 and E2 are values or can step, respectively.
+- : pgood-app _ (good/s SP) GP2 (good/s (step/app1 SP)).
+- : pgood-app _ (good/v VP) (good/s SP) (good/s (step/app2 SP VP)).
+- : pgood-app _ (good/v value/lam) (good/v VP) (good/s (step/app VP)).
+
+%worlds () (pgood-app _ _ _ _).
+%total {} (pgood-app _ _ _ _).
+
+% Equivalent lemma for records.
+pgood-rcd : of-rcd (rcons L E R) (trcons L T TR)
+            -> good E -> good-rcd R -> good-rcd (rcons L E R) -> type.
+%mode pgood-rcd +ORP +GP1 +GP2 -GP3.
+
+- : pgood-rcd _ (good/s SP) GP (good-rcd/s (step-rcd/rcons1 SP)).
+- : pgood-rcd _ (good/v VP) (good-rcd/s SP) (good-rcd/s (step-rcd/rcons SP VP)).
+- : pgood-rcd _ (good/v VP1) (good-rcd/v VP2) (good-rcd/v (value-rcd/rcons VP2 VP1)).
+
+%worlds () (pgood-rcd _ _ _ _).
+%total {} (pgood-rcd _ _ _ _).
+
+
+pgood-rsel : extract-tp L TR T
+              -> of E (trcd TR) -> good E -> good (rsel E L) -> type.
+%mode pgood-rsel +E +OP +GP1 -GP2.
+
+- : pgood-rsel Ext OP (good/s SP) (good/s (step/rsel1 SP)).
+
+- : pgood-rsel ExtTp (of/rcde WF ORP) (good/v (value/rcde VP))
+               (good/s (step/rsel Ext VP))
+     <- extract-tp2exp ORP ExtTp Ext.
+
+%worlds () (pgood-rsel _ _ _ _).
+%total {} (pgood-rsel _ _ _ _).
+
+
+pgood-rcde : good-rcd R -> good (rcde R) -> type.
+%mode pgood-rcde +GP1 -GP2.
+
+- : pgood-rcde (good-rcd/s SP) (good/s (step/rcde SP)).
+- : pgood-rcde (good-rcd/v VP) (good/v (value/rcde VP)).
+
+%worlds () (pgood-rcde _ _).
+%total {} (pgood-rcde _ _).
+
+
+%% Progress
+
+progress : of E T -> good E -> type.
+%mode progress +OP -GP.
+
+progress-rcd : of-rcd R TR -> good-rcd R -> type.
+%mode progress-rcd +OP -GP.
+
+progress/num  : progress of/num (good/v value/num).
+
+progress/lam  : progress (of/lam OP WellF) (good/v value/lam).
+
+progress/app  : progress (of/app ST2 OP2 OP1) GP
+                 <- progress OP1 GP1
+                 <- progress OP2 GP2
+                 <- pgood-app OP1 GP1 GP2 GP.
+
+progress/fix  : progress (of/fix ST OP WF) (good/s step/fix).
+
+progress/rcde : progress (of/rcde WFR ORP) GP
+                 <- progress-rcd ORP GP'
+                 <- pgood-rcde GP' GP.
+
+progress/rsel : progress (of/rsel ExtTp OP) GP
+                 <- progress OP GP1
+                 <- pgood-rsel ExtTp OP GP1 GP.
+
+progress-rcd/rnil  : progress-rcd of-rcd/rnil (good-rcd/v value-rcd/rnil).
+
+progress-rcd/rcons : progress-rcd (of-rcd/rcons OPR OP) GP
+                      <- progress OP GP1
+                      <- progress-rcd OPR GP2
+                      <- pgood-rcd (of-rcd/rcons OPR OP) GP1 GP2 GP.
+
+%worlds () (progress _ _) (progress-rcd _ _).
+%total (OP OPR) (progress OP _) (progress-rcd OPR _).
+
+
+% --- Reasoning from absurdity
+
+uninhabited : type.
+%freeze uninhabited.
+
+% It is absurd that two identical natural numbers should be not equal.
+neq-nat-uninhabited : nat-neq N N -> uninhabited -> type.
+%mode neq-nat-uninhabited +D1 -D2.
+- : neq-nat-uninhabited (nat-neq/ss NE) U
+     <- neq-nat-uninhabited NE U.
+%worlds () (neq-nat-uninhabited _ _).
+%total (D) (neq-nat-uninhabited D _).
+
+% Similarly for labels.
+label-neq-uninhabited : label-neq L L -> uninhabited -> type.
+%mode label-neq-uninhabited +D1 -D2.
+- : label-neq-uninhabited (label-neq/ NE) U
+     <- neq-nat-uninhabited NE U.
+%worlds () (label-neq-uninhabited _ _).
+%total {} (label-neq-uninhabited _ _).
+
+% It is absurd if a label does not occur in a record type
+% and yet a type at the label can be extracted.
+absent-extract-uninhabited : label-absent-tp L TR
+                              -> extract-tp L TR T -> uninhabited -> type.
+%mode absent-extract-uninhabited +LabAbs +ExtTp -U.
+
+- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs' Neq)
+                               (extract-tp/eq Eq) U
+     <- label-neq-uninhabited Neq U.
+
+- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs' Neq)
+                               (extract-tp/neq ExtTp' Neq') U
+     <- absent-extract-uninhabited LabAbs' ExtTp' U.
+
+%worlds () (absent-extract-uninhabited _ _ _).
+%total (ExtTp) (absent-extract-uninhabited _ ExtTp _).
+
+% From absurdity, we can conclude any typing derivation.
+uninhabited-of : {E} {T} uninhabited -> of E T -> type.
+%mode uninhabited-of +E +T +D -D'.
+%worlds () (uninhabited-of _ _ _ _).
+%total {} (uninhabited-of _ _ _ _).
+
+
+% --- Preservation
+
+% Given a record typing derivation, a well-formedness derivation for its type,
+% and component and type extractions for the same label, we can extract the
+% typing derivation for the expression and type at that particular label.
+extract-comp-tp : of-rcd R TR -> uniq TR
+                   -> extract L R E -> extract-tp L TR T -> of E T -> type.
+%mode extract-comp-tp +ORP +Uniq +Ext +ExtTp -OP.
+
+- : extract-comp-tp (of-rcd/rcons OPR OP)
+                    (uniq/rcons Uniq LabAbs)
+                    (extract/eq _) (extract-tp/eq _) OP.
+
+- : extract-comp-tp (of-rcd/rcons OPR OP')
+                    (uniq/rcons Uniq LabAbs)
+                    (extract/neq Ext Q) (extract-tp/neq ExtTp Q') OP
+     <- extract-comp-tp OPR Uniq Ext ExtTp OP.
+
+- : extract-comp-tp (of-rcd/rcons OPR OP')
+                    (uniq/rcons Uniq LabAbs)
+                    (extract/eq Q : extract L _ E)
+                    (extract-tp/neq ExtTp Neq : extract-tp L _ T)
+                    OP
+     <- absent-extract-uninhabited LabAbs ExtTp U
+     <- uninhabited-of E T U OP.
+
+- : extract-comp-tp (of-rcd/rcons ORP OP')
+                    (uniq/rcons Uniq LabAbs)
+                    (extract/neq Ext Neq : extract L _ E)
+                    (extract-tp/eq Eq : extract-tp L _ T)
+                    OP
+       <- extract-exp2tp ORP Ext ExtTp
+       <- absent-extract-uninhabited LabAbs ExtTp U
+       <- uninhabited-of E T U OP.
+
+%worlds () (extract-comp-tp _ _ _ _ _).
+%total (ORP) (extract-comp-tp ORP _ _ _ _).
+
+% Given a type extraction from a record type and a subtype of that record,
+% we can construct a type extraction from the subtype along with a subtype
+% derivation for the extracted type.
+lemma-extract-sub : extract-tp L TR T -> sub-rcd TR' TR
+                     -> extract-tp L TR' T' -> sub T' T -> type.
+%mode lemma-extract-sub +ExtTp +SRT -ExtTp' -ST.
+
+- : lemma-extract-sub (extract-tp/eq Q) (sub-rcd/rcons STR ST)
+                      (extract-tp/eq Q) ST.
+
+- : lemma-extract-sub (extract-tp/neq ExtTp Q) (sub-rcd/rcons STR ST)
+                      (extract-tp/neq ExtTp' Q) ST'
+     <- lemma-extract-sub ExtTp STR ExtTp' ST'.
+
+%worlds () (lemma-extract-sub _ _ _ _).
+%total (ExtTp) (lemma-extract-sub ExtTp _ _ _).
+
+
+% Judgment that two record types have the same labels.
+eq-labels : tp-rcd -> tp-rcd -> type.
+
+eq-labels/rnil  : eq-labels trnil trnil.
+
+eq-labels/rcons : eq-labels (trcons L _ TR) (trcons L _ TR')
+                   <- eq-labels TR TR'.
+
+
+% TODO: Get rid of.
+% Judgment that two record types have the same width.
+eq-width : tp-rcd -> tp-rcd -> type.
+
+eq-width/rnil  : eq-width trnil trnil.
+
+eq-width/rcons : eq-width (trcons L _ TR) (trcons L' _ TR')
+                  <- eq-width TR TR'.
+
+% Reflexivity of eq-width.
+eq-labels-refl : {TR} eq-labels TR TR -> type.
+%mode eq-labels-refl +TR -EqL.
+- : eq-labels-refl trnil eq-labels/rnil.
+- : eq-labels-refl (trcons L T TR) (eq-labels/rcons EqL)
+     <- eq-labels-refl TR EqL.
+%worlds () (eq-labels-refl _ _).
+%total (TR) (eq-labels-refl TR _).
+
+
+% If a record has a subtype of equal width and a label is absent from the
+% supertype, then it is also absent from the subtype.
+lemma-width : eq-labels TR' TR -> label-absent-tp L TR
+               -> label-absent-tp L TR' -> type.
+%mode lemma-width +EqL +Abs -Abs'.
+
+- : lemma-width eq-labels/rnil label-absent-tp/rnil label-absent-tp/rnil.
+
+- : lemma-width (eq-labels/rcons EqL)
+                (label-absent-tp/rcons Abs Neq)
+                (label-absent-tp/rcons Abs' Neq)
+     <- lemma-width EqL Abs Abs'.
+
+%worlds () (lemma-width _ _ _).
+%total (EqL) (lemma-width EqL _ _).
+
+% If a record type has a subtype of equal width and the supertype has
+% distinct labels, then so does the subtype.
+lemma-width-uniq : eq-labels TR' TR -> uniq TR -> uniq TR' -> type.
+%mode lemma-width-uniq +EqL +Uniq -Uniq'.
+
+- : lemma-width-uniq eq-labels/rnil uniq/rnil uniq/rnil.
+
+- : lemma-width-uniq (eq-labels/rcons EqL)
+                     (uniq/rcons Uniq Abs)
+                     (uniq/rcons Uniq' Abs')
+     <- lemma-width-uniq EqL Uniq Uniq'
+     <- lemma-width EqL Abs Abs'.
+
+%worlds () (lemma-width-uniq _ _ _).
+%total (EqL) (lemma-width-uniq EqL _ _).
+
+
+%% Lemma
+
+lemma-sub : ({x:exp} of x T1 -> of (E x) T)
+             -> sub T1' T1
+             -> ({x:exp} of x T1' -> of (E x) T')
+             -> sub T' T
+             -> type.
+%mode lemma-sub +OP +ST -OP' -ST'.
+
+lemma-sub-rcd : ({x:exp} of x T1 -> of-rcd (E x) TR)
+                 -> sub T1' T1
+                 -> ({x:exp} of x T1' -> of-rcd (E x) TR')
+                 -> sub-rcd TR' TR
+                 -> eq-labels TR' TR
+                 -> type.
+%mode lemma-sub-rcd +OP +ST -OP' -ST' -EqL.
+
+% Case t = x
+- : lemma-sub ([x] [dx:of x T1] dx) (ST : sub T1' T1)
+              ([x] [dx':of x T1'] dx') ST.
+
+% Case t = y, where y != x
+- : lemma-sub ([x] [dx:of x T1] (OP : of Y T))
+              (ST : sub T1' T1)
+              ([x] [dx':of x T1'] OP)
+              ST'
+     <- sub-refl T ST'.
+
+% Covered by above case
+% - : lemma-sub ([x] [dx:of x T1] (of/num : of (num N) tnat))
+%               (ST : sub T1' T1)
+%               ([x] [dx:of x T1'] of/num)
+%               sub/nat.
+
+- : lemma-sub ([x] [dx:of x T1] of/lam ([y] [dy:of y T] OP y dy x dx) WF)
+              (ST : sub T1' T1)
+              ([x] [dx':of x T1'] of/lam ([y] [dy:of y T] OP' y dy x dx') WF)
+              (sub/arrow ST' Refl)
+     <- sub-refl T Refl
+     <- {y : exp} {dy : of y T}
+        lemma-sub (OP y dy) ST (OP' y dy) ST'.
+
+- : lemma-sub ([x] [dx:of x T1] of/app
+                 ST2 (OP2 x dx) (OP1 x dx))
+              (ST : sub T1' T1)
+              ([x] [dx:of x T1'] of/app
+                 ST2' (OP2' x dx) (OP1' x dx))
+              (ST' : sub T' T)
+     <- lemma-sub OP1 ST OP1' (sub/arrow (ST' : sub T' T) (ST3 : sub T3 T3'))
+     <- lemma-sub OP2 ST OP2' (ST2'' : sub T2' T2)
+     <- sub-trans ST2'' ST2 ST2'''
+     <- sub-trans ST2''' ST3 ST2'.
+
+- : lemma-sub ([x] [dx:of x T1] of/fix ST0 ([y] [dy:of y T] OP y dy x dx) WF)
+              ST
+              ([x] [dx:of x T1'] of/fix ST0' ([y] [dy] OP' y dy x dx) WF)
+              ST'
+     <- ({y} {dy : of y T} lemma-sub (OP y dy) ST (OP' y dy) ST')
+     <- sub-trans ST' ST0 ST0'.
+
+- : lemma-sub ([x] [dx:of x T1] of/rcde Uniq (ORP x dx))
+              (ST : sub T1' T1)
+              ([x] [dx:of x T1'] of/rcde Uniq' (ORP' x dx))
+              (sub/rcd SRT')
+     <- lemma-sub-rcd ORP ST ORP' SRT' EqL
+     <- lemma-width-uniq EqL Uniq Uniq'.
+
+- : lemma-sub ([x] [dx] of/rsel (ExtTp : extract-tp L TR T) (OP x dx))
+              (ST : sub T1' T1)
+              ([x] [dx] of/rsel ExtTp' (OP' x dx))
+              (ST' : sub T' T)
+     <- lemma-sub OP ST OP' (sub/rcd (SRT : sub-rcd TR' TR))
+     <- lemma-extract-sub ExtTp SRT (ExtTp' : extract-tp L TR' T') ST'.
+
+- : lemma-sub-rcd ([x] [dx] of-rcd/rnil)
+                  ST
+                  ([x] [dx] of-rcd/rnil)
+                  sub-rcd/rnil
+                  eq-labels/rnil.
+
+- : lemma-sub-rcd ([x] [dx:of x T1] of-rcd/rcons (OPR x dx) (OP x dx))
+                  (ST : sub T1' T1)
+                  ([x] [dx:of x T1'] of-rcd/rcons (OPR' x dx) (OP' x dx))
+                  (sub-rcd/rcons SRT' ST')
+                  (eq-labels/rcons EqL)
+     <- lemma-sub OP ST OP' ST'
+     <- lemma-sub-rcd OPR ST OPR' SRT' EqL.
+
+
+%block lemma-sub1 : some {T : tp}
+                    block {y : exp} {dy : of y T}.
+
+%worlds (lemma-sub1) (lemma-sub _ _ _ _) (lemma-sub-rcd _ _ _ _ _).
+%total (OP ORP) (lemma-sub OP _ _ _) (lemma-sub-rcd ORP _ _ _ _).
+
+
+%% Preservation lemma
+
+preserv : step E E' -> of E T -> of E' T' -> sub T' T -> type.
+%mode preserv +SP +OP -OP' -ST.
+
+preserv-rcd : step-rcd R R' -> of-rcd R TR
+                -> of-rcd R' TR' -> sub-rcd TR' TR -> eq-labels TR' TR -> type.
+%mode preserv-rcd +SRP +ORP -ORP' -ST -EqW.
+
+preserv/app1  : preserv (step/app1 (SP1 : step E1 E1'))
+                        (of/app (ST : sub T2 T) (OP2 : of E2 T2) (OP1 : of E1 (tarrow T T')))
+                        (of/app ST' OP2 OP1')
+                        ST2
+                 <- preserv SP1 OP1 (OP1' : of E1' (tarrow T1 T1'))
+                            (sub/arrow (ST2 : sub T1' T') (ST1 : sub T T1)
+                               : sub (tarrow T1 T1') (tarrow T T'))
+                 <- sub-trans ST ST1 ST'.
+
+preserv/app2  : preserv (step/app2 SP2 VP1)
+                        (of/app ST OP2 OP1 : of (app V1 E2) T')
+                        (of/app ST' OP2' OP1)
+                        STRefl
+                 <- preserv SP2 OP2 OP2' ST''
+                 <- sub-trans ST'' ST ST'
+                 <- sub-refl T' STRefl.
+
+preserv/app   : preserv (step/app VP2)
+                        (of/app (ST : sub T2 T) (OP2 : of E2 T2)
+                           (of/lam (OP1 : {x:exp} of x T -> of (E x) T') WF))
+                        (OP1' E2 OP2)
+                        ST'
+                 <- lemma-sub OP1 ST OP1' ST'.
+
+preserv/fix   : preserv step/fix
+                        (of/fix ST ([x] [dx] OP x dx) WF)
+                        (OP' (fix T [x] E x) (of/fix ST OP WF))
+                        ST'
+                 <- lemma-sub OP ST OP' ST'.
+
+preserv/rcde  : preserv (step/rcde SRP)
+                        (of/rcde Uniq ORP)
+                        (of/rcde Uniq' ORP')
+                        (sub/rcd SRT)
+                 <- preserv-rcd SRP ORP ORP' SRT EqL
+                 <- lemma-width-uniq  EqL Uniq Uniq'.
+
+
+preserv/rsel1 : preserv (step/rsel1 SP) (of/rsel ExtTp OP) (of/rsel ExtTp' OP') ST
+                 <- preserv SP OP OP' (sub/rcd SRT)
+                 <- lemma-extract-sub ExtTp SRT ExtTp' ST.
+
+preserv/rsel  : preserv (step/rsel Ext VP) (of/rsel ExtTp (of/rcde Uniq ORP)) OP ST
+                 <- extract-comp-tp ORP Uniq Ext ExtTp (OP : of _ T)
+                 <- sub-refl T ST.
+
+preserv-rcd/rcons1 : preserv-rcd (step-rcd/rcons1 SP)
+                                 (of-rcd/rcons (ORP : of-rcd _ TR) OP)
+                                 (of-rcd/rcons ORP OP')
+                                 (sub-rcd/rcons SRT ST)
+                                 (eq-labels/rcons EqL)
+                      <- preserv SP OP OP' ST
+                      <- sub-rcd-refl TR SRT
+                      <- eq-labels-refl TR EqL.
+
+preserv-rcd/rcons  : preserv-rcd (step-rcd/rcons SRP VP)
+                                 (of-rcd/rcons ORP (OP : of _ T))
+                                 (of-rcd/rcons ORP' OP)
+                                 (sub-rcd/rcons SRT ST)
+                                 (eq-labels/rcons EqW)
+                      <- preserv-rcd SRP ORP ORP' SRT EqW
+                      <- sub-refl T ST.
+
+%worlds () (preserv _ _ _ _) (preserv-rcd _ _ _ _ _).
+%total (SP SRP) (preserv SP _ _ _) (preserv-rcd SRP _ _ _ _).
