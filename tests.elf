@@ -1,0 +1,111 @@
+% --- Syntax
+
+% Examples of abstract syntax involving records (used in later queries).
+example-rcd : rcd = rcons l0 (num 0)
+                     (rcons l1 (lam tnat [x] x)
+                        rnil).
+example-rsel : exp = rsel (rcde example-rcd) l1.
+
+
+% --- Notion of value
+
+%query 1 * D : value (rcde example-rcd).
+
+% Not a value because the component is beta-reducible.
+%query 0 * D : value (rcde (rcons (label/nat 0)
+                              (app (lam tnat [x] x) (num 0)) rnil)).
+
+%query 0 * D : value (rsel (rcde (rcons (label/nat 0)
+                                    (num 0) rnil)) (label/nat 0)).
+
+
+% --- Judgments about labels and records
+
+% A simple example.
+example-rcd-tp = trcons l0 tnat
+                  (trcons l1 (tarrow tnat tnat)
+                     trnil).
+%query 1 * D : wellf-tp (trcd example-rcd-tp).
+%query 1 * D : extract-tp l1 example-rcd-tp (tarrow tnat tnat).
+%query 0 * D : extract-tp l2 example-rcd-tp T.
+
+%query 1 * D : extract l0 example-rcd E.
+%query 0 * D : extract l2 example-rcd E.
+
+
+% --- Subtyping
+
+% Simple example of record width subtype:
+% {0 : nat, 1 : nat, 2 : nat} <: {0 : nat, 1 : nat}
+%query 1 * D : sub (trcd (trcons l0 tnat
+                              (trcons l1 tnat
+                                 (trcons l2 tnat
+                                    (trcons l3 tnat trnil)))))
+                   (trcd (trcons l0 tnat
+                              (trcons l1 tnat trnil))).
+
+% {0 : nat, 1 : nat} is not a subtype of {0 : nat, 1 : nat, 2 : nat}
+%query 0 * D : sub-rcd (trcons l0 tnat
+                          (trcons l1 tnat trnil))
+                       (trcons l0 tnat
+                          (trcons l1 tnat
+                             (trcons l2 tnat trnil))).
+
+% Width and depth:
+% {0 : {0:nat, 1:nat}, 1 : {0:nat}} <: {0 : {0:nat} 1 : {0:nat}}
+
+ex-rcd' = trcd (trcons l0
+                    (trcd (trcons l0 tnat
+                               (trcons l1 tnat trnil)))
+                    (trcons l1
+                       (trcd (trcons l0 tnat trnil))
+                       trnil)).
+
+ex-rcd = trcd (trcons l0
+                   (trcd (trcons l0 tnat trnil))
+                   (trcons l1
+                      (trcd (trcons l0 tnat trnil))
+                      trnil)).
+
+%query 1 * D : sub ex-rcd' ex-rcd.
+
+
+% -- Typing judgment
+
+%query 1 * D : of (rcde example-rcd) T.
+%query 1 * D : of example-rsel T.
+
+% (lam x:{l0:nat}. x.l0) {l0=1, l1=0}
+ex-tp = trcd (trcons l0 tnat trnil).
+%query 1 * D : of (app (lam ex-tp [x] rsel x l0)
+                     (rcde (rcons l0 (num (s 0))
+                              (rcons l1 (num 0) rnil)))) T.
+
+% ill-formed record with duplicate labels.
+example-rcd-bad : rcd = rcons l0 (num 0)
+                         (rcons l1 (lam tnat [x] x)
+                            (rcons l1 (num 0)
+                               rnil)).
+%query 0 * D : of (rcde example-rcd-bad) T.
+
+% example: ((lam x:t.x) {l0 = s 0, l1 = 0}).l0
+ex-tp0 : tp = trcd (trcons l0 tnat
+                     (trcons l1 tnat trnil)).
+
+example-rsel-app : exp
+  = rsel (app (lam ex-tp0 [x] x)
+            (rcde (rcons l0 (num (s 0))
+                     (rcons l1 (num 0) rnil))))
+         l0.
+
+%query 1 * D : of example-rsel-app T.
+
+
+% --- Semantics
+
+% Example expression which is not a value.
+example-rcd' = rcde (rcons l0 (app (lam tnat [x] x) (num 0))
+                       (rcons l1 (app (lam tnat [x] x) (num 0))
+                          rnil)).
+%query 1 * D : step example-rcd' E'.
+%query 1 * D : stepsto example-rcd' E'.
