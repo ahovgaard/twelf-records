@@ -422,7 +422,7 @@ good-rcd/s : good-rcd R
 
 % Progress lemma for application (output factoring).
 pgood-app : of E1 (tarrow T T')
-                -> good E1 -> good E2 -> good (app E1 E2) -> type.
+             -> good E1 -> good E2 -> good (app E1 E2) -> type.
 %mode pgood-app +OP1 +GP1 +GP2 -GP3.
 
 % We analyze each case where E1 and E2 are values or can step, respectively.
@@ -435,7 +435,7 @@ pgood-app : of E1 (tarrow T T')
 
 % Equivalent lemma for records.
 pgood-rcd : of-rcd (rcons L E R) (trcons L T TR)
-            -> good E -> good-rcd R -> good-rcd (rcons L E R) -> type.
+             -> good E -> good-rcd R -> good-rcd (rcons L E R) -> type.
 %mode pgood-rcd +ORP +GP1 +GP2 -GP3.
 
 - : pgood-rcd _ (good/s SP) GP (good-rcd/s (step-rcd/rcons1 SP)).
@@ -445,12 +445,12 @@ pgood-rcd : of-rcd (rcons L E R) (trcons L T TR)
 %worlds () (pgood-rcd _ _ _ _).
 %total {} (pgood-rcd _ _ _ _).
 
-
+% Case for record selectors.
 pgood-rsel : extract-tp L TR T
               -> of E (trcd TR) -> good E -> good (rsel E L) -> type.
 %mode pgood-rsel +E +OP +GP1 -GP2.
 
-- : pgood-rsel Ext OP (good/s SP) (good/s (step/rsel1 SP)).
+- : pgood-rsel ExtTp OP (good/s SP) (good/s (step/rsel1 SP)).
 
 - : pgood-rsel ExtTp (of/rcde WF ORP) (good/v (value/rcde VP))
                (good/s (step/rsel Ext VP))
@@ -459,7 +459,7 @@ pgood-rsel : extract-tp L TR T
 %worlds () (pgood-rsel _ _ _ _).
 %total {} (pgood-rsel _ _ _ _).
 
-
+% Case for record expressions.
 pgood-rcde : good-rcd R -> good (rcde R) -> type.
 %mode pgood-rcde +GP1 -GP2.
 
@@ -480,16 +480,16 @@ progress-rcd : of-rcd R TR -> good-rcd R -> type.
 
 progress/num  : progress of/num (good/v value/num).
 
-progress/lam  : progress (of/lam OP WellF) (good/v value/lam).
+progress/lam  : progress (of/lam OP WF) (good/v value/lam).
 
-progress/app  : progress (of/app ST2 OP2 OP1) GP
+progress/app  : progress (of/app ST OP2 OP1) GP
                  <- progress OP1 GP1
                  <- progress OP2 GP2
                  <- pgood-app OP1 GP1 GP2 GP.
 
 progress/fix  : progress (of/fix ST OP WF) (good/s step/fix).
 
-progress/rcde : progress (of/rcde WFR ORP) GP
+progress/rcde : progress (of/rcde Uniq ORP) GP
                  <- progress-rcd ORP GP'
                  <- pgood-rcde GP' GP.
 
@@ -535,13 +535,13 @@ absent-extract-uninhabited : label-absent-tp L TR
                               -> extract-tp L TR T -> uninhabited -> type.
 %mode absent-extract-uninhabited +LabAbs +ExtTp -U.
 
-- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs' Neq)
+- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs Neq)
                                (extract-tp/eq Eq) U
      <- label-neq-uninhabited Neq U.
 
-- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs' Neq)
-                               (extract-tp/neq ExtTp') U
-     <- absent-extract-uninhabited LabAbs' ExtTp' U.
+- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs Neq)
+                               (extract-tp/neq ExtTp) U
+     <- absent-extract-uninhabited LabAbs ExtTp U.
 
 %worlds () (absent-extract-uninhabited _ _ _).
 %total (ExtTp) (absent-extract-uninhabited _ ExtTp _).
@@ -555,9 +555,9 @@ uninhabited-of : {E} {T} uninhabited -> of E T -> type.
 
 % --- Preservation
 
-% Given a record typing derivation, a well-formedness derivation for its type,
-% and component and type extractions for the same label, we can extract the
-% typing derivation for the expression and type at that particular label.
+% Given a record typing derivation, a derivation of label uniqueness for its
+% type, and component and type extractions for the same label, we can extract
+% the typing derivation for the expression and type at that particular label.
 extract-comp-tp : of-rcd R TR -> uniq TR
                    -> extract L R E -> extract-tp L TR T -> of E T -> type.
 %mode extract-comp-tp +ORP +Uniq +Ext +ExtTp -OP.
@@ -591,8 +591,9 @@ extract-comp-tp : of-rcd R TR -> uniq TR
 %worlds () (extract-comp-tp _ _ _ _ _).
 %total (ORP) (extract-comp-tp ORP _ _ _ _).
 
-% Given a type extraction from a record type and a subtype of that record,
-% we can construct a type extraction from the subtype along with a subtype
+
+% Given a type extraction from a record type and a subtype derivation for that
+% type, we can construct a type extraction from the subtype along with a subtype
 % derivation for the extracted type.
 lemma-extract-sub : extract-tp L TR T -> sub-rcd TR' TR
                      -> extract-tp L TR' T' -> sub T' T -> type.
@@ -609,11 +610,10 @@ lemma-extract-sub : extract-tp L TR T -> sub-rcd TR' TR
 %total (ExtTp) (lemma-extract-sub ExtTp _ _ _).
 
 
-
-% If two record types have the same labels and a labels is absent from one of
-% the types, then it is also absent from the other.
+% If two record types have the same labels and a label is absent from
+% one of the types, then it is also absent from the other.
 lemma-eq-labels-absent : eq-labels TR TR' -> label-absent-tp L TR
-                                          -> label-absent-tp L TR' -> type.
+                          -> label-absent-tp L TR' -> type.
 %mode lemma-eq-labels-absent +EqL +Abs -Abs'.
 
 - : lemma-eq-labels-absent eq-labels/rnil
@@ -627,6 +627,7 @@ lemma-eq-labels-absent : eq-labels TR TR' -> label-absent-tp L TR
 
 %worlds () (lemma-eq-labels-absent _ _ _).
 %total (EqL) (lemma-eq-labels-absent EqL _ _).
+
 
 % If two record types have the same labels and one has unique labels,
 % then so does the other one.
@@ -645,100 +646,96 @@ lemma-eq-labels-uniq : eq-labels TR TR' -> uniq TR -> uniq TR' -> type.
 %total (EqL) (lemma-eq-labels-uniq EqL _ _).
 
 
-%% Lemma
+%% Lemma: If an expression E has type T in a context where x has type T1, then E
+%% will still be well-typed in the context where x is assigned a subtype of T1,
+%% but it will be assigned a subtype of T.
+lemma-sub-context : ({x:exp} of x T1 -> of (E x) T)
+                     -> sub T1' T1
+                     -> ({x:exp} of x T1' -> of (E x) T')
+                     -> sub T' T
+                     -> type.
+%mode lemma-sub-context +OP +ST -OP' -ST'.
 
-lemma-sub : ({x:exp} of x T1 -> of (E x) T)
-             -> sub T1' T1
-             -> ({x:exp} of x T1' -> of (E x) T')
-             -> sub T' T
-             -> type.
-%mode lemma-sub +OP +ST -OP' -ST'.
+lemma-sub-context-rcd : ({x:exp} of x T1 -> of-rcd (E x) TR)
+                         -> sub T1' T1
+                         -> ({x:exp} of x T1' -> of-rcd (E x) TR')
+                         -> sub-rcd TR' TR
+                         -> eq-labels TR TR'
+                         -> type.
+%mode lemma-sub-context-rcd +ORP +ST -ORP' -SRT -EqL.
 
-lemma-sub-rcd : ({x:exp} of x T1 -> of-rcd (E x) TR)
-                 -> sub T1' T1
-                 -> ({x:exp} of x T1' -> of-rcd (E x) TR')
-                 -> sub-rcd TR' TR
-                 -> eq-labels TR TR'
-                 -> type.
-%mode lemma-sub-rcd +OP +ST -OP' -ST' -EqL.
+% Case E = x
+- : lemma-sub-context ([x] [dx:of x T1] dx) (ST : sub T1' T1)
+                      ([x] [dx:of x T1'] dx) ST.
 
-% Case t = x
-- : lemma-sub ([x] [dx:of x T1] dx) (ST : sub T1' T1)
-              ([x] [dx':of x T1'] dx') ST.
-
-% Case t = y, where y != x
-- : lemma-sub ([x] [dx:of x T1] (OP : of Y T))
-              (ST : sub T1' T1)
-              ([x] [dx':of x T1'] OP)
-              ST'
+% Case where x does not appear free in E (covers the case where E is a number)
+- : lemma-sub-context ([x] [dx:of x T1] (OP : of Y T))
+                      (ST : sub T1' T1)
+                      ([x] [dx:of x T1'] OP)
+                      ST'
      <- sub-refl T ST'.
 
-% Covered by above case
-% - : lemma-sub ([x] [dx:of x T1] (of/num : of (num N) tnat))
-%               (ST : sub T1' T1)
-%               ([x] [dx:of x T1'] of/num)
-%               sub/nat.
-
-- : lemma-sub ([x] [dx:of x T1] of/lam ([y] [dy:of y T] OP y dy x dx) WF)
-              (ST : sub T1' T1)
-              ([x] [dx':of x T1'] of/lam ([y] [dy:of y T] OP' y dy x dx') WF)
-              (sub/arrow ST' Refl)
+- : lemma-sub-context ([x] [dx:of x T1] of/lam ([y] [dy:of y T] OP y dy x dx) WF)
+                      (ST : sub T1' T1)
+                      ([x] [dx:of x T1'] of/lam ([y] [dy:of y T] OP' y dy x dx) WF)
+                      (sub/arrow ST' Refl)
      <- sub-refl T Refl
      <- {y : exp} {dy : of y T}
-        lemma-sub (OP y dy) ST (OP' y dy) ST'.
+        lemma-sub-context (OP y dy) ST (OP' y dy) ST'.
 
-- : lemma-sub ([x] [dx:of x T1] of/app
-                 ST2 (OP2 x dx) (OP1 x dx))
-              (ST : sub T1' T1)
-              ([x] [dx:of x T1'] of/app
-                 ST2' (OP2' x dx) (OP1' x dx))
-              (ST' : sub T' T)
-     <- lemma-sub OP1 ST OP1' (sub/arrow (ST' : sub T' T) (ST3 : sub T3 T3'))
-     <- lemma-sub OP2 ST OP2' (ST2'' : sub T2' T2)
+- : lemma-sub-context ([x] [dx:of x T1] of/app (ST2 : sub T2 T3)
+                         (OP2 x dx) (OP1 x dx))
+                      (ST : sub T1' T1)
+                      ([x] [dx:of x T1'] of/app ST2' (OP2' x dx) (OP1' x dx))
+                      (ST' : sub T' T)
+     <- lemma-sub-context OP1 ST OP1' (sub/arrow (ST' : sub T' T)
+                                                 (ST3 : sub T3 T3'))
+     <- lemma-sub-context OP2 ST OP2' (ST2'' : sub T2' T2)
      <- sub-trans ST2'' ST2 ST2'''
      <- sub-trans ST2''' ST3 ST2'.
 
-- : lemma-sub ([x] [dx:of x T1] of/fix ST0 ([y] [dy:of y T] OP y dy x dx) WF)
-              ST
-              ([x] [dx:of x T1'] of/fix ST0' ([y] [dy] OP' y dy x dx) WF)
-              ST'
-     <- ({y} {dy : of y T} lemma-sub (OP y dy) ST (OP' y dy) ST')
+- : lemma-sub-context ([x] [dx] of/fix ST0 ([y] [dy:of y T] OP y dy x dx) WF)
+                      ST
+                      ([x] [dx] of/fix ST0' ([y] [dy] OP' y dy x dx) WF)
+                      ST'
+     <- ({y} {dy : of y T} lemma-sub-context (OP y dy) ST (OP' y dy) ST')
      <- sub-trans ST' ST0 ST0'.
 
-- : lemma-sub ([x] [dx:of x T1] of/rcde Uniq (ORP x dx))
-              (ST : sub T1' T1)
-              ([x] [dx:of x T1'] of/rcde Uniq' (ORP' x dx))
-              (sub/rcd SRT')
-     <- lemma-sub-rcd ORP ST ORP' SRT' EqL
+- : lemma-sub-context ([x] [dx:of x T1] of/rcde Uniq (ORP x dx))
+                      (ST : sub T1' T1)
+                      ([x] [dx:of x T1'] of/rcde Uniq' (ORP' x dx))
+                      (sub/rcd SRT')
+     <- lemma-sub-context-rcd ORP ST ORP' SRT' EqL
      <- lemma-eq-labels-uniq EqL Uniq Uniq'.
 
-- : lemma-sub ([x] [dx] of/rsel (ExtTp : extract-tp L TR T) (OP x dx))
-              (ST : sub T1' T1)
-              ([x] [dx] of/rsel ExtTp' (OP' x dx))
-              (ST' : sub T' T)
-     <- lemma-sub OP ST OP' (sub/rcd (SRT : sub-rcd TR' TR))
+- : lemma-sub-context ([x] [dx] of/rsel (ExtTp : extract-tp L TR T) (OP x dx))
+                      (ST : sub T1' T1)
+                      ([x] [dx] of/rsel ExtTp' (OP' x dx))
+                      (ST' : sub T' T)
+     <- lemma-sub-context OP ST OP' (sub/rcd (SRT : sub-rcd TR' TR))
      <- lemma-extract-sub ExtTp SRT (ExtTp' : extract-tp L TR' T') ST'.
 
-- : lemma-sub-rcd ([x] [dx] of-rcd/rnil)
-                  ST
-                  ([x] [dx] of-rcd/rnil)
-                  sub-rcd/rnil
-                  eq-labels/rnil.
+- : lemma-sub-context-rcd ([x] [dx] of-rcd/rnil)
+                          ST
+                          ([x] [dx] of-rcd/rnil)
+                          sub-rcd/rnil
+                          eq-labels/rnil.
 
-- : lemma-sub-rcd ([x] [dx:of x T1] of-rcd/rcons (OPR x dx) (OP x dx))
-                  (ST : sub T1' T1)
-                  ([x] [dx:of x T1'] of-rcd/rcons (OPR' x dx) (OP' x dx))
-                  (sub-rcd/rcons SRT' ST')
-                  (eq-labels/rcons EqL)
-     <- lemma-sub OP ST OP' ST'
-     <- lemma-sub-rcd OPR ST OPR' SRT' EqL.
+- : lemma-sub-context-rcd ([x] [dx:of x T1] of-rcd/rcons (OPR x dx) (OP x dx))
+                          (ST : sub T1' T1)
+                          ([x] [dx:of x T1'] of-rcd/rcons (OPR' x dx) (OP' x dx))
+                          (sub-rcd/rcons SRT' ST')
+                          (eq-labels/rcons EqL)
+     <- lemma-sub-context OP ST OP' ST'
+     <- lemma-sub-context-rcd OPR ST OPR' SRT' EqL.
 
+%block sub-context-block : some {T : tp}
+                           block {y : exp} {dy : of y T}.
 
-%block lemma-sub1 : some {T : tp}
-                    block {y : exp} {dy : of y T}.
-
-%worlds (lemma-sub1) (lemma-sub _ _ _ _) (lemma-sub-rcd _ _ _ _ _).
-%total (OP ORP) (lemma-sub OP _ _ _) (lemma-sub-rcd ORP _ _ _ _).
+%worlds (sub-context-block) (lemma-sub-context _ _ _ _)
+                            (lemma-sub-context-rcd _ _ _ _ _).
+%total (OP ORP) (lemma-sub-context OP _ _ _)
+                (lemma-sub-context-rcd ORP _ _ _ _).
 
 
 %% Preservation lemma
@@ -751,7 +748,8 @@ preserv-rcd : step-rcd R R' -> of-rcd R TR
 %mode preserv-rcd +SRP +ORP -ORP' -ST -EqW.
 
 preserv/app1  : preserv (step/app1 (SP1 : step E1 E1'))
-                        (of/app (ST : sub T2 T) (OP2 : of E2 T2) (OP1 : of E1 (tarrow T T')))
+                        (of/app (ST : sub T2 T) (OP2 : of E2 T2)
+                                (OP1 : of E1 (tarrow T T')))
                         (of/app ST' OP2 OP1')
                         ST2
                  <- preserv SP1 OP1 (OP1' : of E1' (tarrow T1 T1'))
@@ -772,27 +770,28 @@ preserv/app   : preserv (step/app VP2)
                            (of/lam (OP1 : {x:exp} of x T -> of (E x) T') WF))
                         (OP1' E2 OP2)
                         ST'
-                 <- lemma-sub OP1 ST OP1' ST'.
+                 <- lemma-sub-context OP1 ST OP1' ST'.
 
 preserv/fix   : preserv step/fix
                         (of/fix ST ([x] [dx] OP x dx) WF)
                         (OP' (fix T [x] E x) (of/fix ST OP WF))
                         ST'
-                 <- lemma-sub OP ST OP' ST'.
+                 <- lemma-sub-context OP ST OP' ST'.
 
 preserv/rcde  : preserv (step/rcde SRP)
                         (of/rcde Uniq ORP)
                         (of/rcde Uniq' ORP')
                         (sub/rcd SRT)
                  <- preserv-rcd SRP ORP ORP' SRT EqL
-                 <- lemma-eq-labels-uniq  EqL Uniq Uniq'.
+                 <- lemma-eq-labels-uniq EqL Uniq Uniq'.
 
-
-preserv/rsel1 : preserv (step/rsel1 SP) (of/rsel ExtTp OP) (of/rsel ExtTp' OP') ST
+preserv/rsel1 : preserv (step/rsel1 SP) (of/rsel ExtTp OP)
+                        (of/rsel ExtTp' OP') ST
                  <- preserv SP OP OP' (sub/rcd SRT)
                  <- lemma-extract-sub ExtTp SRT ExtTp' ST.
 
-preserv/rsel  : preserv (step/rsel Ext VP) (of/rsel ExtTp (of/rcde Uniq ORP)) OP ST
+preserv/rsel  : preserv (step/rsel Ext VP) (of/rsel ExtTp (of/rcde Uniq ORP))
+                        OP ST
                  <- extract-comp-tp ORP Uniq Ext ExtTp (OP : of _ T)
                  <- sub-refl T ST.
 
@@ -809,8 +808,8 @@ preserv-rcd/rcons  : preserv-rcd (step-rcd/rcons SRP VP)
                                  (of-rcd/rcons ORP (OP : of _ T))
                                  (of-rcd/rcons ORP' OP)
                                  (sub-rcd/rcons SRT ST)
-                                 (eq-labels/rcons EqW)
-                      <- preserv-rcd SRP ORP ORP' SRT EqW
+                                 (eq-labels/rcons EqL)
+                      <- preserv-rcd SRP ORP ORP' SRT EqL
                       <- sub-refl T ST.
 
 %worlds () (preserv _ _ _ _) (preserv-rcd _ _ _ _ _).
