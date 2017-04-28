@@ -98,42 +98,13 @@ value-rcd/rcons : value-rcd (rcons L V R)
 % --- Judgments about labels and records
 
 % Judgment that a label does not occur in a record type.
-label-absent-tp : label -> tp-rcd -> type.
+absent : label -> tp-rcd -> type.
 
-label-absent-tp/rnil  : label-absent-tp L trnil.
+absent/rnil  : absent L trnil.
 
-label-absent-tp/rcons : label-absent-tp L (trcons L' T TR)
-                         <- label-neq L L'
-                         <- label-absent-tp L TR.
-
-% Uniqueness of labels
-uniq : tp-rcd -> type. %name uniq Uniq.
-
-uniq/rnil  : uniq trnil.
-
-uniq/rcons : uniq (trcons L T TR)
-              <- label-absent-tp L TR
-              <- uniq TR.
-
-% Well-formedness of types: all occurring record types have distinct labels.
-wellf-tp : tp -> type.
-wellf-tp-rcd : tp-rcd -> type.
-
-wellf-tnat   : wellf-tp tnat.
-
-wellf-tarrow : wellf-tp (tarrow T T')
-                <- wellf-tp T
-                <- wellf-tp T'.
-
-wellf-trcd   : wellf-tp (trcd TR)
-                <- wellf-tp-rcd TR.
-
-wellf-trnil  : wellf-tp-rcd trnil.
-
-wellf-trcons : wellf-tp-rcd (trcons L T TR)
-                <- wellf-tp T
-                <- label-absent-tp L TR
-                <- wellf-tp-rcd TR.
+absent/rcons : absent L (trcons L' T TR)
+                <- label-neq L L'
+                <- absent L TR.
 
 % Extracts the type at a given label from a record type.
 extract-tp : label -> tp-rcd -> tp -> type.
@@ -145,13 +116,13 @@ extract-tp/neq : extract-tp L (trcons L' T' TR) T
                   <- extract-tp L TR T.
 
 % Extracts the component with a given label in a record.
-extract : label -> rcd -> exp -> type.
+extract-exp : label -> rcd -> exp -> type.
 
-extract/eq  : extract L (rcons L' E R) E
-               <- label-eq L L'.
+extract-exp/eq  : extract-exp L (rcons L' E R) E
+                   <- label-eq L L'.
 
-extract/neq : extract L (rcons L' E R) E'
-               <- extract L R E'.
+extract-exp/neq : extract-exp L (rcons L' E' R) E
+                   <- extract-exp L R E.
 
 % Judgment that two record types have the same labels.
 eq-labels : tp-rcd -> tp-rcd -> type.
@@ -286,24 +257,21 @@ of-rcd : rcd -> tp-rcd -> type. %name of-rcd ORP.
 of/num  : of (num N) tnat.
 
 of/lam  : of (lam T [x] E x) (tarrow T T')
-           <- wellf-tp T
            <- {x:exp} of x T -> of (E x) T'.
 
-% Subtyping application rule
+% Subtyping application and fixed-point rules
 of/app  : of (app E1 E2) T'
            <- of E1 (tarrow T T')
            <- of E2 T2
            <- sub T2 T.
 
 of/fix  : of (fix T [x] E x) T'
-           <- wellf-tp T
            <- ({x:exp} of x T -> of (E x) T')
            <- sub T' T.
 
 % Records
 of/rcde : of (rcde R) (trcd TR)
-           <- of-rcd R TR
-           <- uniq TR.
+           <- of-rcd R TR.
 
 of/rsel : of (rsel E L) T
            <- of E (trcd TR)
@@ -313,34 +281,37 @@ of-rcd/rnil  : of-rcd rnil trnil.
 
 of-rcd/rcons : of-rcd (rcons L E R) (trcons L T TR)
                 <- of E T
-                <- of-rcd R TR.
+                <- of-rcd R TR
+                <- absent L TR.  % ensures label distinctness
 
 
-%% Lemma: Given a record typing derivation and a record type extraction,
-%%        we can construct a corresponding record component extraction.
-
+% Given a record typing derivation and a record type extraction,
+% we can construct a corresponding record component extraction.
 extract-tp2exp : of-rcd R TR
-                  -> extract-tp L TR T -> extract L R E -> type.
+                  -> extract-tp L TR T -> extract-exp L R E -> type.
 %mode extract-tp2exp +OPR +ExtTp -Ext.
 
-- : extract-tp2exp (of-rcd/rcons ORP OP) (extract-tp/eq Q)
-                   (extract/eq Q).
+- : extract-tp2exp (of-rcd/rcons Abs ORP OP) (extract-tp/eq Q)
+                   (extract-exp/eq Q).
 
-- : extract-tp2exp (of-rcd/rcons ORP OP) (extract-tp/neq ExtTp)
-                   (extract/neq Ext)
+- : extract-tp2exp (of-rcd/rcons Abs ORP OP) (extract-tp/neq ExtTp)
+                   (extract-exp/neq Ext)
      <- extract-tp2exp ORP ExtTp Ext.
 
 %worlds () (extract-tp2exp _ _ _).
 %total (ExtTp) (extract-tp2exp _ ExtTp _).
 
 % From expression component extraction to type extraction.
+% (Used in a contradictory case of a later lemma.)
 extract-exp2tp : of-rcd R TR
-                  -> extract L R E -> extract-tp L TR T -> type.
+                  -> extract-exp L R E -> extract-tp L TR T -> type.
 %mode extract-exp2tp +OPR +Ext -ExtTp.
 
-- : extract-exp2tp (of-rcd/rcons ORP OP) (extract/eq Q) (extract-tp/eq Q).
+- : extract-exp2tp (of-rcd/rcons Abs ORP OP) (extract-exp/eq Q)
+                   (extract-tp/eq Q).
 
-- : extract-exp2tp (of-rcd/rcons ORP OP) (extract/neq Ext) (extract-tp/neq ExtTp)
+- : extract-exp2tp (of-rcd/rcons Abs ORP OP) (extract-exp/neq Ext)
+                   (extract-tp/neq ExtTp)
      <- extract-exp2tp ORP Ext ExtTp.
 
 %worlds () (extract-exp2tp _ _ _).
@@ -374,12 +345,12 @@ step/rsel1 : step (rsel E L) (rsel E' L)
 
 step/rsel  : step (rsel (rcde V) L) V'
               <- value-rcd V
-              <- extract L V V'.
+              <- extract-exp L V V'.
 
 step-rcd/rcons1 : step-rcd (rcons L E R) (rcons L E' R)
                    <- step E E'.
 
-step-rcd/rcons  : step-rcd (rcons L V R) (rcons L V R')
+step-rcd/rcons2 : step-rcd (rcons L V R) (rcons L V R')
                    <- value V
                    <- step-rcd R R'.
 
@@ -439,20 +410,20 @@ pgood-rcd : of-rcd (rcons L E R) (trcons L T TR)
 %mode pgood-rcd +ORP +GP1 +GP2 -GP3.
 
 - : pgood-rcd _ (good/s SP) GP (good-rcd/s (step-rcd/rcons1 SP)).
-- : pgood-rcd _ (good/v VP) (good-rcd/s SP) (good-rcd/s (step-rcd/rcons SP VP)).
+- : pgood-rcd _ (good/v VP) (good-rcd/s SP) (good-rcd/s (step-rcd/rcons2 SP VP)).
 - : pgood-rcd _ (good/v VP1) (good-rcd/v VP2) (good-rcd/v (value-rcd/rcons VP2 VP1)).
 
 %worlds () (pgood-rcd _ _ _ _).
 %total {} (pgood-rcd _ _ _ _).
 
 % Case for record selectors.
-pgood-rsel : extract-tp L TR T
-              -> of E (trcd TR) -> good E -> good (rsel E L) -> type.
-%mode pgood-rsel +E +OP +GP1 -GP2.
+pgood-rsel : of E (trcd TR) -> extract-tp L TR T
+              ->  good E -> good (rsel E L) -> type.
+%mode pgood-rsel +OP +ExtTp +GP1 -GP2.
 
-- : pgood-rsel ExtTp OP (good/s SP) (good/s (step/rsel1 SP)).
+- : pgood-rsel OP ExtTp (good/s SP) (good/s (step/rsel1 SP)).
 
-- : pgood-rsel ExtTp (of/rcde WF ORP) (good/v (value/rcde VP))
+- : pgood-rsel (of/rcde ORP) ExtTp (good/v (value/rcde VP))
                (good/s (step/rsel Ext VP))
      <- extract-tp2exp ORP ExtTp Ext.
 
@@ -480,29 +451,29 @@ progress-rcd : of-rcd R TR -> good-rcd R -> type.
 
 progress/num  : progress of/num (good/v value/num).
 
-progress/lam  : progress (of/lam OP WF) (good/v value/lam).
+progress/lam  : progress (of/lam OP) (good/v value/lam).
 
 progress/app  : progress (of/app ST OP2 OP1) GP
                  <- progress OP1 GP1
                  <- progress OP2 GP2
                  <- pgood-app OP1 GP1 GP2 GP.
 
-progress/fix  : progress (of/fix ST OP WF) (good/s step/fix).
+progress/fix  : progress (of/fix ST OP) (good/s step/fix).
 
-progress/rcde : progress (of/rcde Uniq ORP) GP
+progress/rcde : progress (of/rcde ORP) GP
                  <- progress-rcd ORP GP'
                  <- pgood-rcde GP' GP.
 
 progress/rsel : progress (of/rsel ExtTp OP) GP
                  <- progress OP GP1
-                 <- pgood-rsel ExtTp OP GP1 GP.
+                 <- pgood-rsel OP ExtTp GP1 GP.
 
 progress-rcd/rnil  : progress-rcd of-rcd/rnil (good-rcd/v value-rcd/rnil).
 
-progress-rcd/rcons : progress-rcd (of-rcd/rcons OPR OP) GP
+progress-rcd/rcons : progress-rcd (of-rcd/rcons Abs OPR OP) GP
                       <- progress OP GP1
                       <- progress-rcd OPR GP2
-                      <- pgood-rcd (of-rcd/rcons OPR OP) GP1 GP2 GP.
+                      <- pgood-rcd (of-rcd/rcons Abs OPR OP) GP1 GP2 GP.
 
 %worlds () (progress _ _) (progress-rcd _ _).
 %total (OP OPR) (progress OP _) (progress-rcd OPR _).
@@ -531,15 +502,15 @@ label-neq-uninhabited : label-neq L L -> uninhabited -> type.
 
 % It is absurd if a label does not occur in a record type
 % and yet a type at the label can be extracted.
-absent-extract-uninhabited : label-absent-tp L TR
+absent-extract-uninhabited : absent L TR
                               -> extract-tp L TR T -> uninhabited -> type.
 %mode absent-extract-uninhabited +LabAbs +ExtTp -U.
 
-- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs Neq)
+- : absent-extract-uninhabited (absent/rcons LabAbs Neq)
                                (extract-tp/eq Eq) U
      <- label-neq-uninhabited Neq U.
 
-- : absent-extract-uninhabited (label-absent-tp/rcons LabAbs Neq)
+- : absent-extract-uninhabited (absent/rcons LabAbs Neq)
                                (extract-tp/neq ExtTp) U
      <- absent-extract-uninhabited LabAbs ExtTp U.
 
@@ -555,41 +526,38 @@ uninhabited-of : {E} {T} uninhabited -> of E T -> type.
 
 % --- Preservation
 
-% Given a record typing derivation, a derivation of label uniqueness for its
-% type, and component and type extractions for the same label, we can extract
-% the typing derivation for the expression and type at that particular label.
-extract-comp-tp : of-rcd R TR -> uniq TR
-                   -> extract L R E -> extract-tp L TR T -> of E T -> type.
-%mode extract-comp-tp +ORP +Uniq +Ext +ExtTp -OP.
+% Given a record typing derivation, and component and type extractions for the
+% same label, we can extract the typing derivation for the expression and type
+% at that particular label.
+extract-comp-tp : of-rcd R TR -> extract-exp L R E -> extract-tp L TR T
+                   -> of E T -> type.
+%mode extract-comp-tp +ORP +Ext +ExtTp -OP.
 
-- : extract-comp-tp (of-rcd/rcons OPR OP)
-                    (uniq/rcons Uniq LabAbs)
-                    (extract/eq _) (extract-tp/eq _) OP.
+- : extract-comp-tp (of-rcd/rcons Abs OPR OP)
+                    (extract-exp/eq _) (extract-tp/eq _) OP.
 
-- : extract-comp-tp (of-rcd/rcons OPR OP')
-                    (uniq/rcons Uniq LabAbs)
-                    (extract/neq Ext) (extract-tp/neq ExtTp) OP
-     <- extract-comp-tp OPR Uniq Ext ExtTp OP.
+- : extract-comp-tp (of-rcd/rcons Abs OPR OP')
+                    (extract-exp/neq Ext) (extract-tp/neq ExtTp) OP
+     <- extract-comp-tp OPR Ext ExtTp OP.
 
-- : extract-comp-tp (of-rcd/rcons OPR OP')
-                    (uniq/rcons Uniq LabAbs)
-                    (extract/eq Q : extract L _ E)
+% Contradictory cases
+- : extract-comp-tp (of-rcd/rcons Abs OPR OP')
+                    (extract-exp/eq Eq : extract-exp L _ E)
                     (extract-tp/neq ExtTp : extract-tp L _ T)
                     OP
-     <- absent-extract-uninhabited LabAbs ExtTp U
+     <- absent-extract-uninhabited Abs ExtTp U
      <- uninhabited-of E T U OP.
 
-- : extract-comp-tp (of-rcd/rcons ORP OP')
-                    (uniq/rcons Uniq LabAbs)
-                    (extract/neq Ext : extract L _ E)
+- : extract-comp-tp (of-rcd/rcons Abs ORP OP')
+                    (extract-exp/neq Ext : extract-exp L _ E)
                     (extract-tp/eq Eq : extract-tp L _ T)
                     OP
        <- extract-exp2tp ORP Ext ExtTp
-       <- absent-extract-uninhabited LabAbs ExtTp U
+       <- absent-extract-uninhabited Abs ExtTp U
        <- uninhabited-of E T U OP.
 
-%worlds () (extract-comp-tp _ _ _ _ _).
-%total (ORP) (extract-comp-tp ORP _ _ _ _).
+%worlds () (extract-comp-tp _ _ _ _).
+%total (ORP) (extract-comp-tp ORP _ _ _).
 
 
 % Given a type extraction from a record type and a subtype derivation for that
@@ -612,43 +580,24 @@ lemma-extract-sub : extract-tp L TR T -> sub-rcd TR' TR
 
 % If two record types have the same labels and a label is absent from
 % one of the types, then it is also absent from the other.
-lemma-eq-labels-absent : eq-labels TR TR' -> label-absent-tp L TR
-                          -> label-absent-tp L TR' -> type.
+lemma-eq-labels-absent : eq-labels TR TR' -> absent L TR
+                          -> absent L TR' -> type.
 %mode lemma-eq-labels-absent +EqL +Abs -Abs'.
 
-- : lemma-eq-labels-absent eq-labels/rnil
-                           label-absent-tp/rnil
-                           label-absent-tp/rnil.
+- : lemma-eq-labels-absent eq-labels/rnil absent/rnil absent/rnil.
 
 - : lemma-eq-labels-absent (eq-labels/rcons EqL)
-                           (label-absent-tp/rcons Abs Neq)
-                           (label-absent-tp/rcons Abs' Neq)
+                           (absent/rcons Abs Neq)
+                           (absent/rcons Abs' Neq)
      <- lemma-eq-labels-absent EqL Abs Abs'.
 
 %worlds () (lemma-eq-labels-absent _ _ _).
 %total (EqL) (lemma-eq-labels-absent EqL _ _).
 
 
-% If two record types have the same labels and one has unique labels,
-% then so does the other one.
-lemma-eq-labels-uniq : eq-labels TR TR' -> uniq TR -> uniq TR' -> type.
-%mode lemma-eq-labels-uniq +EqL +Uniq -Uniq'.
-
-- : lemma-eq-labels-uniq eq-labels/rnil uniq/rnil uniq/rnil.
-
-- : lemma-eq-labels-uniq (eq-labels/rcons EqL)
-                         (uniq/rcons Uniq Abs)
-                         (uniq/rcons Uniq' Abs')
-     <- lemma-eq-labels-uniq EqL Uniq Uniq'
-     <- lemma-eq-labels-absent EqL Abs Abs'.
-
-%worlds () (lemma-eq-labels-uniq _ _ _).
-%total (EqL) (lemma-eq-labels-uniq EqL _ _).
-
-
-%% Lemma: If an expression E has type T in a context where x has type T1, then E
-%% will still be well-typed in the context where x is assigned a subtype of T1,
-%% but it will be assigned a subtype of T.
+% Lemma: If an expression E has type T in a context where x has type T1, then E
+% will still be well-typed in the context where x is assigned a subtype of T1,
+% but it will be assigned a subtype of T.
 lemma-sub-context : ({x:exp} of x T1 -> of (E x) T)
                      -> sub T1' T1
                      -> ({x:exp} of x T1' -> of (E x) T')
@@ -675,18 +624,21 @@ lemma-sub-context-rcd : ({x:exp} of x T1 -> of-rcd (E x) TR)
                       ST'
      <- sub-refl T ST'.
 
-- : lemma-sub-context ([x] [dx:of x T1] of/lam ([y] [dy:of y T] OP y dy x dx) WF)
+- : lemma-sub-context ([x] [dx:of x T1]
+                         of/lam ([y] [dy:of y T] OP y dy x dx))
                       (ST : sub T1' T1)
-                      ([x] [dx:of x T1'] of/lam ([y] [dy:of y T] OP' y dy x dx) WF)
+                      ([x] [dx:of x T1']
+                         of/lam ([y] [dy:of y T] OP' y dy x dx))
                       (sub/arrow ST' Refl)
      <- sub-refl T Refl
      <- {y : exp} {dy : of y T}
         lemma-sub-context (OP y dy) ST (OP' y dy) ST'.
 
-- : lemma-sub-context ([x] [dx:of x T1] of/app (ST2 : sub T2 T3)
-                         (OP2 x dx) (OP1 x dx))
+- : lemma-sub-context ([x] [dx:of x T1]
+                         of/app (ST2 : sub T2 T3) (OP2 x dx) (OP1 x dx))
                       (ST : sub T1' T1)
-                      ([x] [dx:of x T1'] of/app ST2' (OP2' x dx) (OP1' x dx))
+                      ([x] [dx:of x T1']
+                         of/app ST2' (OP2' x dx) (OP1' x dx))
                       (ST' : sub T' T)
      <- lemma-sub-context OP1 ST OP1' (sub/arrow (ST' : sub T' T)
                                                  (ST3 : sub T3 T3'))
@@ -694,19 +646,18 @@ lemma-sub-context-rcd : ({x:exp} of x T1 -> of-rcd (E x) TR)
      <- sub-trans ST2'' ST2 ST2'''
      <- sub-trans ST2''' ST3 ST2'.
 
-- : lemma-sub-context ([x] [dx] of/fix ST0 ([y] [dy:of y T] OP y dy x dx) WF)
+- : lemma-sub-context ([x] [dx] of/fix ST0 ([y] [dy:of y T] OP y dy x dx))
                       ST
-                      ([x] [dx] of/fix ST0' ([y] [dy] OP' y dy x dx) WF)
+                      ([x] [dx] of/fix ST0' ([y] [dy] OP' y dy x dx))
                       ST'
      <- ({y} {dy : of y T} lemma-sub-context (OP y dy) ST (OP' y dy) ST')
      <- sub-trans ST' ST0 ST0'.
 
-- : lemma-sub-context ([x] [dx:of x T1] of/rcde Uniq (ORP x dx))
+- : lemma-sub-context ([x] [dx:of x T1] of/rcde (ORP x dx))
                       (ST : sub T1' T1)
-                      ([x] [dx:of x T1'] of/rcde Uniq' (ORP' x dx))
+                      ([x] [dx:of x T1'] of/rcde (ORP' x dx))
                       (sub/rcd SRT')
-     <- lemma-sub-context-rcd ORP ST ORP' SRT' EqL
-     <- lemma-eq-labels-uniq EqL Uniq Uniq'.
+     <- lemma-sub-context-rcd ORP ST ORP' SRT' EqL.
 
 - : lemma-sub-context ([x] [dx] of/rsel (ExtTp : extract-tp L TR T) (OP x dx))
                       (ST : sub T1' T1)
@@ -721,13 +672,16 @@ lemma-sub-context-rcd : ({x:exp} of x T1 -> of-rcd (E x) TR)
                           sub-rcd/rnil
                           eq-labels/rnil.
 
-- : lemma-sub-context-rcd ([x] [dx:of x T1] of-rcd/rcons (OPR x dx) (OP x dx))
+- : lemma-sub-context-rcd ([x] [dx:of x T1]
+                             of-rcd/rcons Abs (OPR x dx) (OP x dx))
                           (ST : sub T1' T1)
-                          ([x] [dx:of x T1'] of-rcd/rcons (OPR' x dx) (OP' x dx))
+                          ([x] [dx:of x T1']
+                             of-rcd/rcons Abs' (OPR' x dx) (OP' x dx))
                           (sub-rcd/rcons SRT' ST')
                           (eq-labels/rcons EqL)
      <- lemma-sub-context OP ST OP' ST'
-     <- lemma-sub-context-rcd OPR ST OPR' SRT' EqL.
+     <- lemma-sub-context-rcd OPR ST OPR' SRT' EqL
+     <- lemma-eq-labels-absent EqL Abs Abs'.
 
 %block sub-context-block : some {T : tp}
                            block {y : exp} {dy : of y T}.
@@ -767,49 +721,47 @@ preserv/app2  : preserv (step/app2 SP2 VP1)
 
 preserv/app   : preserv (step/app VP2)
                         (of/app (ST : sub T2 T) (OP2 : of E2 T2)
-                           (of/lam (OP1 : {x:exp} of x T -> of (E x) T') WF))
+                           (of/lam (OP1 : {x:exp} of x T -> of (E x) T')))
                         (OP1' E2 OP2)
                         ST'
                  <- lemma-sub-context OP1 ST OP1' ST'.
 
 preserv/fix   : preserv step/fix
-                        (of/fix ST ([x] [dx] OP x dx) WF)
-                        (OP' (fix T [x] E x) (of/fix ST OP WF))
+                        (of/fix ST ([x] [dx] OP x dx))
+                        (OP' (fix T [x] E x) (of/fix ST OP))
                         ST'
                  <- lemma-sub-context OP ST OP' ST'.
 
-preserv/rcde  : preserv (step/rcde SRP)
-                        (of/rcde Uniq ORP)
-                        (of/rcde Uniq' ORP')
-                        (sub/rcd SRT)
-                 <- preserv-rcd SRP ORP ORP' SRT EqL
-                 <- lemma-eq-labels-uniq EqL Uniq Uniq'.
+preserv/rcde  : preserv (step/rcde SRP) (of/rcde ORP)
+                        (of/rcde ORP') (sub/rcd SRT)
+                 <- preserv-rcd SRP ORP ORP' SRT EqL.
 
 preserv/rsel1 : preserv (step/rsel1 SP) (of/rsel ExtTp OP)
                         (of/rsel ExtTp' OP') ST
                  <- preserv SP OP OP' (sub/rcd SRT)
                  <- lemma-extract-sub ExtTp SRT ExtTp' ST.
 
-preserv/rsel  : preserv (step/rsel Ext VP) (of/rsel ExtTp (of/rcde Uniq ORP))
+preserv/rsel  : preserv (step/rsel Ext VP) (of/rsel ExtTp (of/rcde ORP))
                         OP ST
-                 <- extract-comp-tp ORP Uniq Ext ExtTp (OP : of _ T)
+                 <- extract-comp-tp ORP Ext ExtTp (OP : of _ T)
                  <- sub-refl T ST.
 
 preserv-rcd/rcons1 : preserv-rcd (step-rcd/rcons1 SP)
-                                 (of-rcd/rcons (ORP : of-rcd _ TR) OP)
-                                 (of-rcd/rcons ORP OP')
+                                 (of-rcd/rcons Abs (ORP : of-rcd _ TR) OP)
+                                 (of-rcd/rcons Abs ORP OP')
                                  (sub-rcd/rcons SRT ST)
                                  (eq-labels/rcons EqL)
                       <- preserv SP OP OP' ST
                       <- sub-rcd-refl TR SRT
                       <- eq-labels-refl TR EqL.
 
-preserv-rcd/rcons  : preserv-rcd (step-rcd/rcons SRP VP)
-                                 (of-rcd/rcons ORP (OP : of _ T))
-                                 (of-rcd/rcons ORP' OP)
+preserv-rcd/rcons2 : preserv-rcd (step-rcd/rcons2 SRP VP)
+                                 (of-rcd/rcons Abs ORP (OP : of _ T))
+                                 (of-rcd/rcons Abs' ORP' OP)
                                  (sub-rcd/rcons SRT ST)
                                  (eq-labels/rcons EqL)
                       <- preserv-rcd SRP ORP ORP' SRT EqL
+                      <- lemma-eq-labels-absent EqL Abs Abs'
                       <- sub-refl T ST.
 
 %worlds () (preserv _ _ _ _) (preserv-rcd _ _ _ _ _).
