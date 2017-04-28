@@ -1,3 +1,5 @@
+%% Various test queries.
+
 % --- Syntax
 
 % Examples of abstract syntax involving records (used in later queries).
@@ -25,12 +27,12 @@ example-rsel : exp = rsel (rcde example-rcd) l1.
 example-rcd-tp = trcons l0 tnat
                   (trcons l1 (tarrow tnat tnat)
                      trnil).
-%query 1 * D : wellf-tp (trcd example-rcd-tp).
+% %query 1 * D : wellf (trcd example-rcd-tp).
 %query 1 * D : extract-tp l1 example-rcd-tp (tarrow tnat tnat).
 %query 0 * D : extract-tp l2 example-rcd-tp T.
 
-%query 1 * D : extract l0 example-rcd E.
-%query 0 * D : extract l2 example-rcd E.
+%query 1 * D : extract-exp l0 example-rcd E.
+%query 0 * D : extract-exp l2 example-rcd E.
 
 
 % --- Subtyping
@@ -54,18 +56,14 @@ example-rcd-tp = trcons l0 tnat
 % Width and depth:
 % {0 : {0:nat, 1:nat}, 1 : {0:nat}} <: {0 : {0:nat} 1 : {0:nat}}
 
-ex-rcd' = trcd (trcons l0
-                    (trcd (trcons l0 tnat
-                               (trcons l1 tnat trnil)))
-                    (trcons l1
-                       (trcd (trcons l0 tnat trnil))
-                       trnil)).
+ex-rcd' = trcd (trcons l0 (trcd (trcons l0 tnat
+                                   (trcons l1 tnat trnil)))
+                  (trcons l1 (trcd (trcons l0 tnat trnil))
+                     trnil)).
 
-ex-rcd = trcd (trcons l0
-                   (trcd (trcons l0 tnat trnil))
-                   (trcons l1
-                      (trcd (trcons l0 tnat trnil))
-                      trnil)).
+ex-rcd = trcd (trcons l0 (trcd (trcons l0 tnat trnil))
+                 (trcons l1 (trcd (trcons l0 tnat trnil))
+                    trnil)).
 
 %query 1 * D : sub ex-rcd' ex-rcd.
 
@@ -99,6 +97,14 @@ example-rsel-app : exp
          l0.
 
 %query 1 * D : of example-rsel-app T.
+
+% Lambda argument type well-formedness
+%   lam x:{l0:nat, l0:nat}. x.l0
+% Typeable when wellf is not a premise of the lambda typing rule,
+% with two possible derivations; one for each possible type.
+%query 2 * D : of (lam (trcd (trcons l0 tnat
+                                (trcons l0 tnat trnil)))
+                     [x] rsel x l0) T.
 
 
 % --- Semantics
